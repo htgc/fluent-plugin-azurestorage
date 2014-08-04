@@ -80,7 +80,7 @@ module Fluent
     def start
       super
 
-      if (!@azure_storage_account.nil? && !@azure_storage_access_key)
+      if (!@azure_storage_account.nil? && !@azure_storage_access_key.nil?)
         Azure.configure do |config|
           config.storage_account_name = @azure_storage_account
           config.storage_access_key   = @azure_storage_access_key
