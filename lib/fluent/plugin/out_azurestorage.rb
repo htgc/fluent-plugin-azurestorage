@@ -96,7 +96,6 @@ module Fluent
     end
 
     def write(chunk)
-      blob_list = @bs.list_blobs(@azure_container)
       i = 0
       begin
         path = @path_slicer.call(@path)
@@ -110,7 +109,7 @@ module Fluent
           values_for_object_key[expr[2...expr.size-1]]
         }
         i += 1
-      end while blob_list.find { |elem| elem.name == storage_path }
+      end while blob_exists?(@azure_container, storage_path)
  
       tmp = Tempfile.new("azure-")
       begin
@@ -160,6 +159,18 @@ module Fluent
         Open3.capture3("#{command} -V")
       rescue Errno::ENOENT
         raise ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
+      end
+    end
+
+    def blob_exists?(container, blob)
+      begin
+        @bs.get_blob_properties(container, blob)
+        true
+      rescue Azure::Core::Http::HTTPError => ex
+        raise if ex.status_code != 404
+        false
+      rescue Exception => e
+        raise e.message
       end
     end
   end

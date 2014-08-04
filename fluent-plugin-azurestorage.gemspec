@@ -4,7 +4,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = "fluent-plugin-azurestorage"
-  spec.version       = "0.0.1"
+  spec.version       = "0.0.2"
   spec.authors       = ["Hidemasa Togashi"]
   spec.email         = ["togachiro@gmail.com"]
   spec.description   = %q{Fluent plugin for store to Azure Storage}
