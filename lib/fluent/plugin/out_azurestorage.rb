@@ -26,6 +26,10 @@ module Fluent
 
     include Fluent::Mixin::ConfigPlaceholders
 
+    def placeholders
+      [:percent]
+    end
+
     def configure(conf)
       super
 
