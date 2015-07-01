@@ -97,6 +97,8 @@ module Fluent
 
     def write(chunk)
       i = 0
+      previous_path = nil
+
       begin
         path = @path_slicer.call(@path)
         values_for_object_key = {
@@ -108,7 +110,13 @@ module Fluent
         storage_path = @azure_object_key_format.gsub(%r(%{[^}]+})) { |expr|
           values_for_object_key[expr[2...expr.size-1]]
         }
+
+        if (i > 0) && (storage_path == previous_path)
+          raise "duplicated path is generated. use %{index} in azure_object_key_format: path = #{storage_path}"
+        end
+
         i += 1
+        previous_path = storage_path
       end while blob_exists?(@azure_container, storage_path)
  
       tmp = Tempfile.new("azure-")
