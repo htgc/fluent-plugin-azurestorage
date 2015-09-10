@@ -15,7 +15,7 @@ module Fluent
 
     config_param :path, :string, :default => ''
     config_param :azure_storage_account, :string, :default => nil
-    config_param :azure_storage_access_key, :string, :default => nil
+    config_param :azure_storage_access_key, :string, :default => nil, :secret => true
     config_param :azure_container, :string, :default => nil
     config_param :azure_storage_type, :string, :default => 'blob'
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
