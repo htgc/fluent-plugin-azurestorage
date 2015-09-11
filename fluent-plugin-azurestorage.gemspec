@@ -22,5 +22,5 @@ Gem::Specification.new do |spec|
 
   spec.add_runtime_dependency "fluentd"
   spec.add_runtime_dependency "fluent-mixin-config-placeholders"
-  spec.add_runtime_dependency "azure"
+  spec.add_runtime_dependency "azure", "0.6.4"
 end
