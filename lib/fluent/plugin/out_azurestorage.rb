@@ -59,8 +59,8 @@ module Fluent
                         'blob'
                       end
 
-      conf['format'] = @format
-      @formatter = TextFormatter.create(conf)
+      @formatter = Plugin.new_formatter(@format)
+      @formatter.configure(conf)
 
       if @localtime
         @path_slicer = Proc.new {|path|
