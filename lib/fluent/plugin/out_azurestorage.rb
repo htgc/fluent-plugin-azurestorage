@@ -7,6 +7,7 @@ module Fluent
     def initialize
       super
       require 'azure'
+      require 'fluent/plugin/upload_service'
       require 'zlib'
       require 'time'
       require 'tempfile'
@@ -81,6 +82,7 @@ module Fluent
         end
       end
       @bs = Azure::BlobService.new
+      @bs.extend UploadService
 
       ensure_container
     end
@@ -117,8 +119,13 @@ module Fluent
       begin
         @compressor.compress(chunk, tmp)
         tmp.close
-        content = File.open(tmp.path, 'rb') { |file| file.read }
-        @bs.create_block_blob(@azure_container, storage_path, content)
+
+        options = {}
+        options[:content_type] = @compressor.content_type
+        options[:container] = @azure_container
+        options[:blob] = storage_path
+
+        @bs.upload(tmp.path, options)
       end
     end
 
