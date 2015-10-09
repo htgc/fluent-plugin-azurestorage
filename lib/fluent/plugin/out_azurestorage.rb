@@ -10,19 +10,22 @@ module Fluent
       require 'zlib'
       require 'time'
       require 'tempfile'
-      require 'open3'
+
+      @compressor = nil
     end
 
-    config_param :path, :string, :default => ''
+    config_param :path, :string, :default => ""
     config_param :azure_storage_account, :string, :default => nil
     config_param :azure_storage_access_key, :string, :default => nil, :secret => true
     config_param :azure_container, :string, :default => nil
-    config_param :azure_storage_type, :string, :default => 'blob'
+    config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
-    config_param :store_as, :string, :default => 'gzip'
+    config_param :store_as, :string, :default => "gzip"
     config_param :auto_create_container, :bool, :default => true
-    config_param :format, :string, :default => 'out_file'
+    config_param :format, :string, :default => "out_file"
     config_param :command_parameter, :string, :default => nil
+
+    attr_reader :bs
 
     include Fluent::Mixin::ConfigPlaceholders
 
@@ -33,31 +36,13 @@ module Fluent
     def configure(conf)
       super
 
-      @ext = case @store_as
-             when 'gzip'
-               'gz'
-             when 'lzo'
-               check_command('lzop', 'LZO')
-               @command_parameter = '-qf1' if @command_parameter.nil?
-               'lzo'
-             when 'lzma2'
-               check_command('xz', 'LZMA2')
-               @command_paramter = '-qf0' if @command_parameter.nil?
-               'xz'
-             when 'json'
-               'json'
-             else
-               'txt'
-             end
-
-      @storage_type = case @azure_storage_type
-                      when 'tables'
-                        raise NotImplementedError
-                      when 'queues'
-                        raise NotImplementedError
-                      else
-                        'blob'
-                      end
+      begin
+        @compressor = COMPRESSOR_REGISTRY.lookup(@store_as).new(:buffer_type => @buffer_type, :log => log)
+      rescue => e
+        $log.warn "#{@store_as} not found. Use 'text' instead"
+        @compressor = TextCompressor.new
+      end
+      @compressor.configure(conf)
 
       @formatter = Plugin.new_formatter(@format)
       @formatter.configure(conf)
@@ -75,6 +60,15 @@ module Fluent
       if @azure_container.nil?
         raise ConfigError, 'azure_container is needed'
       end
+
+      @storage_type = case @azure_storage_type
+                        when 'tables'
+                          raise NotImplementedError
+                        when 'queues'
+                          raise NotImplementedError
+                        else
+                          'blob'
+                      end
     end
 
     def start
@@ -102,15 +96,15 @@ module Fluent
       begin
         path = @path_slicer.call(@path)
         values_for_object_key = {
-          'path' => path,
-          'time_slice' => chunk.key,
-          'file_extension' => @ext,
-          'index' => i
+          "path" => path,
+          "time_slice" => chunk.key,
+          "file_extension" => @compressor.ext,
+          "index" => i,
+          "uuid_flush" => uuid_random
         }
         storage_path = @azure_object_key_format.gsub(%r(%{[^}]+})) { |expr|
           values_for_object_key[expr[2...expr.size-1]]
         }
-
         if (i > 0) && (storage_path == previous_path)
           raise "duplicated path is generated. use %{index} in azure_object_key_format: path = #{storage_path}"
         end
@@ -118,36 +112,13 @@ module Fluent
         i += 1
         previous_path = storage_path
       end while blob_exists?(@azure_container, storage_path)
- 
+
       tmp = Tempfile.new("azure-")
       begin
-        case @store_as
-        when 'gzip'
-          w = Zlib::GzipWriter.new(tmp)
-          chunk.write_to(w)
-          w.close
-        when 'lzo'
-          w = Tempfile.new('chunk-tmp')
-          chunk.write_to(w)
-          w.close
-          tmp.close
-          system "lzop #{@command_parameter} -o #{tmp.path} #{w.path}"
-        when 'lzma2'
-          w = Tempfile.new('chunk-xz-tmp')
-          chunk.write_to(w)
-          w.close
-          tmp.close
-          system "xz #{@command_parameter} -c #{w.path} > #{tmp.path}"
-        else
-          chunk.write_to(tmp)
-          tmp.close
-        end
+        @compressor.compress(chunk, tmp)
+        tmp.close
         content = File.open(tmp.path, 'rb') { |file| file.read }
         @bs.create_block_blob(@azure_container, storage_path, content)
-      ensure
-        tmp.close(true) rescue nil
-        w.close rescue nil
-        w.unlink rescue nil
       end
     end
 
@@ -162,12 +133,97 @@ module Fluent
       end
     end
 
-    def check_command(command, algo)
-      begin
-        Open3.capture3("#{command} -V")
-      rescue Errno::ENOENT
-        raise ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
+    class Compressor
+      include Configurable
+
+      def initialize(opts = {})
+        super()
+        @buffer_type = opts[:buffer_type]
+        @log = opts[:log]
       end
+
+      attr_reader :buffer_type, :log
+
+      def configure(conf)
+        super
+      end
+
+      def ext
+      end
+
+      def content_type
+      end
+
+      def compress(chunk, tmp)
+      end
+
+      private
+
+      def check_command(command, algo = nil)
+        require 'open3'
+
+        algo = command if algo.nil?
+        begin
+          Open3.capture3("#{command} -V")
+        rescue Errno::ENOENT
+          raise ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
+        end
+      end
+    end
+
+    class GzipCompressor < Compressor
+      def ext
+        'gz'.freeze
+      end
+
+      def content_type
+        'application/x-gzip'.freeze
+      end
+
+      def compress(chunk, tmp)
+        w = Zlib::GzipWriter.new(tmp)
+        chunk.write_to(w)
+        w.finish
+      ensure
+        w.finish rescue nil
+      end
+    end
+
+    class TextCompressor < Compressor
+      def ext
+        'txt'.freeze
+      end
+
+      def content_type
+        'text/plain'.freeze
+      end
+
+      def compress(chunk, tmp)
+        chunk.write_to(tmp)
+      end
+    end
+
+    class JsonCompressor < TextCompressor
+      def ext
+        'json'.freeze
+      end
+
+      def content_type
+        'application/json'.freeze
+      end
+    end
+
+    COMPRESSOR_REGISTRY = Registry.new(:azurestorage_compressor_type, 'fluent/plugin/azurestorage_compressor_')
+    {
+        'gzip' => GzipCompressor,
+        'json' => JsonCompressor,
+        'text' => TextCompressor
+    }.each { |name, compressor|
+      COMPRESSOR_REGISTRY.register(name, compressor)
+    }
+
+    def self.register_compressor(name, compressor)
+      COMPRESSOR_REGISTRY.register(name, compressor)
     end
 
     def blob_exists?(container, blob)
