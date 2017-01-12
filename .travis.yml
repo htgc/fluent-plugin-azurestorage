@@ -3,7 +3,7 @@ language: ruby
 rvm:
   - 2.1
   - 2.2.0
-  - rbx-2
+  - rbx
 
 gemfile:
  - Gemfile
@@ -17,4 +17,4 @@ script: bundle exec rake test
 
 matrix:
   allow_failures:
-    - rvm: rbx-2
+    - rvm: rbx
