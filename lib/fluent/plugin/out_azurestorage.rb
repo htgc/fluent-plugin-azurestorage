@@ -81,7 +81,7 @@ module Fluent
           config.storage_access_key   = @azure_storage_access_key
         end
       end
-      @bs = Azure::BlobService.new
+      @bs = Azure::Blob::BlobService.new
       @bs.extend UploadService
 
       ensure_container
