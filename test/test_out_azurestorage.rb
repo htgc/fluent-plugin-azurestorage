@@ -21,7 +21,7 @@ class AzureStorageOutputTest < Test::Unit::TestCase
   ]
 
   def create_driver(conf = CONFIG)
-    Fluent::Test::BufferedOutputTestDriver.new(Fluent::AzureStorageOutput) do
+    Fluent::Test::TimeSlicedOutputTestDriver.new(Fluent::AzureStorageOutput) do
       def write(chunk)
         chunk.read
       end
@@ -197,8 +197,8 @@ class AzureStorageOutputTest < Test::Unit::TestCase
     # AzureStorageOutputTest#write returns chunk.read
     data = d.run
 
-    assert_equal %[2011-01-02T13:14:15Z\ttest\t{"a":1}\n] +
-                 %[2011-01-02T13:14:15Z\ttest\t{"a":2}\n],
+    assert_equal [%[2011-01-02T13:14:15Z\ttest\t{"a":1}\n] +
+                 %[2011-01-02T13:14:15Z\ttest\t{"a":2}\n]],
                  data
   end
 
