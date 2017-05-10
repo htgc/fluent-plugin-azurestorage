@@ -41,10 +41,6 @@ module Fluent::Plugin
 
     attr_reader :bs
 
-    def placeholders
-      [:percent]
-    end
-
     def configure(conf)
       compat_parameters_convert(conf, :buffer, :formatter, :inject)
       super
