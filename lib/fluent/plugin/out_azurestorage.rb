@@ -1,8 +1,10 @@
-module Fluent
-  require 'fluent/mixin/config_placeholders'
+require 'fluent/plugin/output'
 
-  class AzureStorageOutput < Fluent::TimeSlicedOutput
+module Fluent::Plugin
+  class AzureStorageOutput < Fluent::Plugin::Output
     Fluent::Plugin.register_output('azurestorage', self)
+
+    helpers :compat_parameters, :formatter, :inject
 
     def initialize
       super
@@ -26,15 +28,25 @@ module Fluent
     config_param :format, :string, :default => "out_file"
     config_param :command_parameter, :string, :default => nil
 
-    attr_reader :bs
+    DEFAULT_FORMAT_TYPE = "out_file"
 
-    include Fluent::Mixin::ConfigPlaceholders
+    config_section :format do
+      config_set_default :@type, DEFAULT_FORMAT_TYPE
+    end
+
+    config_section :buffer do
+      config_set_default :chunk_keys, ['time']
+      config_set_default :timekey, (60 * 60 * 24)
+    end
+
+    attr_reader :bs
 
     def placeholders
       [:percent]
     end
 
     def configure(conf)
+      compat_parameters_convert(conf, :buffer, :formatter, :inject)
       super
 
       begin
@@ -45,8 +57,7 @@ module Fluent
       end
       @compressor.configure(conf)
 
-      @formatter = Plugin.new_formatter(@format)
-      @formatter.configure(conf)
+      @formatter = formatter_create
 
       if @localtime
         @path_slicer = Proc.new {|path|
@@ -72,6 +83,10 @@ module Fluent
                       end
     end
 
+    def multi_workers_ready?
+      true
+    end
+
     def start
       super
 
@@ -88,11 +103,13 @@ module Fluent
     end
 
     def format(tag, time, record)
-      @formatter.format(tag, time, record)
+      r = inject_values_to_record(tag, time, record)
+      @formatter.format(tag, time, r)
     end
 
     def write(chunk)
       i = 0
+      metadata = chunk.metadata
       previous_path = nil
 
       begin
@@ -107,6 +124,7 @@ module Fluent
         storage_path = @azure_object_key_format.gsub(%r(%{[^}]+})) { |expr|
           values_for_object_key[expr[2...expr.size-1]]
         }
+        storage_path = extract_placeholders(storage_path, metadata)
         if (i > 0) && (storage_path == previous_path)
           raise "duplicated path is generated. use %{index} in azure_object_key_format: path = #{storage_path}"
         end
@@ -141,7 +159,7 @@ module Fluent
     end
 
     class Compressor
-      include Configurable
+      include Fluent::Configurable
 
       def initialize(opts = {})
         super()
@@ -220,7 +238,7 @@ module Fluent
       end
     end
 
-    COMPRESSOR_REGISTRY = Registry.new(:azurestorage_compressor_type, 'fluent/plugin/azurestorage_compressor_')
+    COMPRESSOR_REGISTRY = Fluent::Registry.new(:azurestorage_compressor_type, 'fluent/plugin/azurestorage_compressor_')
     {
         'gzip' => GzipCompressor,
         'json' => JsonCompressor,
