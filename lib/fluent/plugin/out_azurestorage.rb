@@ -116,15 +116,13 @@ module Fluent::Plugin
       begin
         path = @path_slicer.call(@path)
         values_for_object_key = {
-          "path" => path,
-          "time_slice" => time_slice,
-          "file_extension" => @compressor.ext,
-          "index" => i,
-          "uuid_flush" => uuid_random
+          "%{path}" => path,
+          "%{time_slice}" => time_slice,
+          "%{file_extension}" => @compressor.ext,
+          "%{index}" => i,
+          "%{uuid_flush}" => uuid_random
         }
-        storage_path = @azure_object_key_format.gsub(%r(%{[^}]+})) { |expr|
-          values_for_object_key[expr[2...expr.size-1]]
-        }
+        storage_path = @azure_object_key_format.gsub(%r(%{[^}]+}), values_for_object_key)
         storage_path = extract_placeholders(storage_path, metadata)
         if (i > 0) && (storage_path == previous_path)
           raise "duplicated path is generated. use %{index} in azure_object_key_format: path = #{storage_path}"
