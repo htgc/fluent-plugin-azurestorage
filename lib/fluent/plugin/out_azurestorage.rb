@@ -111,12 +111,17 @@ module Fluent::Plugin
       i = 0
       metadata = chunk.metadata
       previous_path = nil
+      time_slice = if metadata.timekey.nil?
+                     ''.freeze
+                   else
+                     Time.at(metadata.timekey).utc.strftime(time_slice_format)
+                   end
 
       begin
         path = @path_slicer.call(@path)
         values_for_object_key = {
           "path" => path,
-          "time_slice" => chunk.key,
+          "time_slice" => time_slice,
           "file_extension" => @compressor.ext,
           "index" => i,
           "uuid_flush" => uuid_random
