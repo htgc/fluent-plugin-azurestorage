@@ -77,6 +77,9 @@ module Fluent::Plugin
                         else
                           'blob'
                       end
+      # For backward compatibility
+      # TODO: Remove time_slice_format when end of support compat_parameters
+      @configured_time_slice_format = conf['time_slice_format']
     end
 
     def multi_workers_ready?
@@ -107,6 +110,7 @@ module Fluent::Plugin
       i = 0
       metadata = chunk.metadata
       previous_path = nil
+      time_slice_format = @configured_time_slice_format || timekey_to_timeformat(@buffer_config['timekey'])
       time_slice = if metadata.timekey.nil?
                      ''.freeze
                    else
