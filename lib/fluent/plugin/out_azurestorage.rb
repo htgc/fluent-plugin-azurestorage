@@ -166,6 +166,17 @@ module Fluent::Plugin
       ::UUIDTools::UUID.random_create.to_s
     end
 
+    # This is stolen from Fluentd
+    def timekey_to_timeformat(timekey)
+      case timekey
+      when nil          then ''
+      when 0...60       then '%Y%m%d%H%M%S' # 60 exclusive
+      when 60...3600    then '%Y%m%d%H%M'
+      when 3600...86400 then '%Y%m%d%H'
+      else                   '%Y%m%d'
+      end
+    end
+
     class Compressor
       include Fluent::Configurable
 
