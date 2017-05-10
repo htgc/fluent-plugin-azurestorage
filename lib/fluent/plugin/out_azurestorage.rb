@@ -1,3 +1,8 @@
+require 'azure'
+require 'fluent/plugin/upload_service'
+require 'zlib'
+require 'time'
+require 'tempfile'
 require 'fluent/plugin/output'
 
 module Fluent::Plugin
@@ -8,11 +13,6 @@ module Fluent::Plugin
 
     def initialize
       super
-      require 'azure'
-      require 'fluent/plugin/upload_service'
-      require 'zlib'
-      require 'time'
-      require 'tempfile'
 
       @compressor = nil
     end
