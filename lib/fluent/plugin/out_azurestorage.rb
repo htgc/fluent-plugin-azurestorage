@@ -52,7 +52,7 @@ module Fluent::Plugin
       begin
         @compressor = COMPRESSOR_REGISTRY.lookup(@store_as).new(:buffer_type => @buffer_type, :log => log)
       rescue => e
-        $log.warn "#{@store_as} not found. Use 'text' instead"
+        log.warn "#{@store_as} not found. Use 'text' instead"
         @compressor = TextCompressor.new
       end
       @compressor.configure(conf)
