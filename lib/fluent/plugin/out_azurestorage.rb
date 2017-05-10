@@ -163,6 +163,11 @@ module Fluent::Plugin
       end
     end
 
+    def uuid_random
+      require 'uuidtools'
+      ::UUIDTools::UUID.random_create.to_s
+    end
+
     class Compressor
       include Fluent::Configurable
 
