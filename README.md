@@ -16,6 +16,48 @@ $ gem install fluent-plugin-azurestorage
 
 ## Configuration
 
+### v0.14 style
+
+```
+<match pattern>
+  type azurestorage
+
+  azure_storage_account    <your azure storage account>
+  azure_storage_access_key <your azure storage access key>
+  azure_container          <your azure storage container>
+  azure_storage_type       blob
+  store_as                 gzip
+  auto_create_container    true
+  path                     logs/
+  azure_object_key_format  %{path}%{time_slice}_%{index}.%{file_extension}
+  time_slice_format        %Y%m%d-%H
+  # if you want to use ${tag} or %Y/%m/%d/ like syntax in path / s3_object_key_format,
+  # need to specify tag for ${tag} and time for %Y/%m/%d in <buffer> argument.
+  <buffer tag,time>
+    @type file
+    path /var/log/fluent/azurestorage
+    timekey 3600 # 1 hour partition
+    timekey_wait 10m
+    timekey_use_utc true # use utc
+  </buffer>
+</match>
+```
+
+For `<buffer>`, you can use any record field in `path` / `azure_object_key_format`.
+
+```
+path logs/${tag}/${foo}
+<buffer tag,foo>
+  # parameters...
+</buffer>
+```
+
+See official article for more detail: Buffer section configurations
+
+Note that this configuration doesn't work with fluentd v0.12.
+
+### v0.12 style
+
 ```
 <match pattern>
   type azurestorage
