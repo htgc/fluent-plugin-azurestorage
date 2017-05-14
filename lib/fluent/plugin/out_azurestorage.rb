@@ -1,16 +1,18 @@
-module Fluent
-  require 'fluent/mixin/config_placeholders'
+require 'azure'
+require 'fluent/plugin/upload_service'
+require 'zlib'
+require 'time'
+require 'tempfile'
+require 'fluent/plugin/output'
 
-  class AzureStorageOutput < Fluent::TimeSlicedOutput
+module Fluent::Plugin
+  class AzureStorageOutput < Fluent::Plugin::Output
     Fluent::Plugin.register_output('azurestorage', self)
+
+    helpers :compat_parameters, :formatter, :inject
 
     def initialize
       super
-      require 'azure'
-      require 'fluent/plugin/upload_service'
-      require 'zlib'
-      require 'time'
-      require 'tempfile'
 
       @compressor = nil
     end
@@ -26,27 +28,32 @@ module Fluent
     config_param :format, :string, :default => "out_file"
     config_param :command_parameter, :string, :default => nil
 
-    attr_reader :bs
+    DEFAULT_FORMAT_TYPE = "out_file"
 
-    include Fluent::Mixin::ConfigPlaceholders
-
-    def placeholders
-      [:percent]
+    config_section :format do
+      config_set_default :@type, DEFAULT_FORMAT_TYPE
     end
 
+    config_section :buffer do
+      config_set_default :chunk_keys, ['time']
+      config_set_default :timekey, (60 * 60 * 24)
+    end
+
+    attr_reader :bs
+
     def configure(conf)
+      compat_parameters_convert(conf, :buffer, :formatter, :inject)
       super
 
       begin
         @compressor = COMPRESSOR_REGISTRY.lookup(@store_as).new(:buffer_type => @buffer_type, :log => log)
       rescue => e
-        $log.warn "#{@store_as} not found. Use 'text' instead"
+        log.warn "#{@store_as} not found. Use 'text' instead"
         @compressor = TextCompressor.new
       end
       @compressor.configure(conf)
 
-      @formatter = Plugin.new_formatter(@format)
-      @formatter.configure(conf)
+      @formatter = formatter_create
 
       if @localtime
         @path_slicer = Proc.new {|path|
@@ -70,6 +77,13 @@ module Fluent
                         else
                           'blob'
                       end
+      # For backward compatibility
+      # TODO: Remove time_slice_format when end of support compat_parameters
+      @configured_time_slice_format = conf['time_slice_format']
+    end
+
+    def multi_workers_ready?
+      true
     end
 
     def start
@@ -88,25 +102,32 @@ module Fluent
     end
 
     def format(tag, time, record)
-      @formatter.format(tag, time, record)
+      r = inject_values_to_record(tag, time, record)
+      @formatter.format(tag, time, r)
     end
 
     def write(chunk)
       i = 0
+      metadata = chunk.metadata
       previous_path = nil
+      time_slice_format = @configured_time_slice_format || timekey_to_timeformat(@buffer_config['timekey'])
+      time_slice = if metadata.timekey.nil?
+                     ''.freeze
+                   else
+                     Time.at(metadata.timekey).utc.strftime(time_slice_format)
+                   end
 
       begin
         path = @path_slicer.call(@path)
         values_for_object_key = {
-          "path" => path,
-          "time_slice" => chunk.key,
-          "file_extension" => @compressor.ext,
-          "index" => i,
-          "uuid_flush" => uuid_random
+          "%{path}" => path,
+          "%{time_slice}" => time_slice,
+          "%{file_extension}" => @compressor.ext,
+          "%{index}" => i,
+          "%{uuid_flush}" => uuid_random
         }
-        storage_path = @azure_object_key_format.gsub(%r(%{[^}]+})) { |expr|
-          values_for_object_key[expr[2...expr.size-1]]
-        }
+        storage_path = @azure_object_key_format.gsub(%r(%{[^}]+}), values_for_object_key)
+        storage_path = extract_placeholders(storage_path, metadata)
         if (i > 0) && (storage_path == previous_path)
           raise "duplicated path is generated. use %{index} in azure_object_key_format: path = #{storage_path}"
         end
@@ -140,8 +161,24 @@ module Fluent
       end
     end
 
+    def uuid_random
+      require 'uuidtools'
+      ::UUIDTools::UUID.random_create.to_s
+    end
+
+    # This is stolen from Fluentd
+    def timekey_to_timeformat(timekey)
+      case timekey
+      when nil          then ''
+      when 0...60       then '%Y%m%d%H%M%S' # 60 exclusive
+      when 60...3600    then '%Y%m%d%H%M'
+      when 3600...86400 then '%Y%m%d%H'
+      else                   '%Y%m%d'
+      end
+    end
+
     class Compressor
-      include Configurable
+      include Fluent::Configurable
 
       def initialize(opts = {})
         super()
@@ -220,7 +257,7 @@ module Fluent
       end
     end
 
-    COMPRESSOR_REGISTRY = Registry.new(:azurestorage_compressor_type, 'fluent/plugin/azurestorage_compressor_')
+    COMPRESSOR_REGISTRY = Fluent::Registry.new(:azurestorage_compressor_type, 'fluent/plugin/azurestorage_compressor_')
     {
         'gzip' => GzipCompressor,
         'json' => JsonCompressor,

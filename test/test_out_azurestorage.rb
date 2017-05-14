@@ -1,9 +1,13 @@
 require 'fluent/test'
+require 'fluent/test/driver/output'
+require 'fluent/test/helpers'
 require 'fluent/plugin/out_azurestorage'
 
 require 'test/unit/rr'
 require 'zlib'
 require 'fileutils'
+
+include Fluent::Test::Helpers
 
 class AzureStorageOutputTest < Test::Unit::TestCase
   def setup
@@ -21,9 +25,16 @@ class AzureStorageOutputTest < Test::Unit::TestCase
   ]
 
   def create_driver(conf = CONFIG)
-    Fluent::Test::TimeSlicedOutputTestDriver.new(Fluent::AzureStorageOutput) do
+    Fluent::Test::Driver::Output.new(Fluent::Plugin::AzureStorageOutput) do
+      # for testing.
+      def contents
+        @emit_streams
+      end
+
       def write(chunk)
-        chunk.read
+        @emit_streams = []
+        event = chunk.read
+        @emit_streams << event
       end
 
       private
@@ -64,11 +75,9 @@ class AzureStorageOutputTest < Test::Unit::TestCase
     conf = CONFIG.clone
     conf << "\nstore_as lzo\n"
     d = create_driver(conf)
-    assert_equal 'lzo', d.instance.instance_variable_get(:@compressor).ext
-    assert_equal 'application/x-lzop', d.instance.instance_variable_get(:@compressor).content_type
-  rescue => e
-    # TODO: replace code with disable lzop command
-    assert(e.is_a?(Fluent::ConfigError))
+    # Fallback to text/plain.
+    assert_equal 'txt', d.instance.instance_variable_get(:@compressor).ext
+    assert_equal 'text/plain', d.instance.instance_variable_get(:@compressor).content_type
   end
 
   def test_path_slicing
@@ -93,109 +102,118 @@ class AzureStorageOutputTest < Test::Unit::TestCase
   def test_format
     d = create_driver
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[2011-01-02T13:14:15Z\ttest\t{"a":1}\n]
-    d.expect_format %[2011-01-02T13:14:15Z\ttest\t{"a":2}\n]
-
-    d.run
+    assert_equal %[2011-01-02T13:14:15Z\ttest\t{"a":1}\n], formatted[0]
+    assert_equal %[2011-01-02T13:14:15Z\ttest\t{"a":2}\n], formatted[1]
   end
 
   def test_format_included_tag_and_time
     config = [CONFIG, 'include_tag_key true', 'include_time_key true'].join("\n")
     d = create_driver(config)
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[2011-01-02T13:14:15Z\ttest\t{"a":1,"tag":"test","time":"2011-01-02T13:14:15Z"}\n]
-    d.expect_format %[2011-01-02T13:14:15Z\ttest\t{"a":2,"tag":"test","time":"2011-01-02T13:14:15Z"}\n]
-
-    d.run
+    assert_equal %[2011-01-02T13:14:15Z\ttest\t{"a":1,"tag":"test","time":"2011-01-02T13:14:15Z"}\n], formatted[0]
+    assert_equal %[2011-01-02T13:14:15Z\ttest\t{"a":2,"tag":"test","time":"2011-01-02T13:14:15Z"}\n], d.formatted[1]
   end
 
   def test_format_with_format_ltsv
     config = [CONFIG, 'format ltsv'].join("\n")
     d = create_driver(config)
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1, "b"=>1}, time)
-    d.emit({"a"=>2, "b"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1, "b"=>1})
+      d.feed(time, {"a"=>2, "b"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[a:1\tb:1\n]
-    d.expect_format %[a:2\tb:2\n]
-
-    d.run
+    assert_equal %[a:1\tb:1\n], formatted[0]
+    assert_equal %[a:2\tb:2\n], formatted[1]
   end
 
   def test_format_with_format_json
     config = [CONFIG, 'format json'].join("\n")
     d = create_driver(config)
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[{"a":1}\n]
-    d.expect_format %[{"a":2}\n]
-
-    d.run
+    assert_equal %[{"a":1}\n], formatted[0]
+    assert_equal %[{"a":2}\n], formatted[1]
   end
 
   def test_format_with_format_json_included_tag
     config = [CONFIG, 'format json', 'include_tag_key true'].join("\n")
     d = create_driver(config)
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[{"a":1,"tag":"test"}\n]
-    d.expect_format %[{"a":2,"tag":"test"}\n]
-
-    d.run
+    assert_equal %[{"a":1,"tag":"test"}\n], formatted[0]
+    assert_equal %[{"a":2,"tag":"test"}\n], formatted[1]
   end
 
   def test_format_with_format_json_included_time
     config = [CONFIG, 'format json', 'include_time_key true'].join("\n")
     d = create_driver(config)
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[{"a":1,"time":"2011-01-02T13:14:15Z"}\n]
-    d.expect_format %[{"a":2,"time":"2011-01-02T13:14:15Z"}\n]
-
-    d.run
+    assert_equal %[{"a":1,"time":"2011-01-02T13:14:15Z"}\n], formatted[0]
+    assert_equal %[{"a":2,"time":"2011-01-02T13:14:15Z"}\n], formatted[1]
   end
 
   def test_format_with_format_json_included_tag_and_time
     config = [CONFIG, 'format json', 'include_tag_key true', 'include_time_key true'].join("\n")
     d = create_driver(config)
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
+    formatted = d.formatted
 
-    d.expect_format %[{"a":1,"tag":"test","time":"2011-01-02T13:14:15Z"}\n]
-    d.expect_format %[{"a":2,"tag":"test","time":"2011-01-02T13:14:15Z"}\n]
-
-    d.run
+    assert_equal %[{"a":1,"tag":"test","time":"2011-01-02T13:14:15Z"}\n], formatted[0]
+    assert_equal %[{"a":2,"tag":"test","time":"2011-01-02T13:14:15Z"}\n], formatted[1]
   end
 
   def test_chunk_to_write
     d = create_driver
 
-    time = Time.parse("2011-01-02 13:14:15 UTC").to_i
-    d.emit({"a"=>1}, time)
-    d.emit({"a"=>2}, time)
+    time = event_time("2011-01-02 13:14:15 UTC")
+    d.run(default_tag: "test") do
+      d.feed(time, {"a"=>1})
+      d.feed(time, {"a"=>2})
+    end
 
-    # AzureStorageOutputTest#write returns chunk.read
-    data = d.run
+    # Stubbed #write and #emit_streams returns chunk.read result.
+    data = d.instance.contents
 
     assert_equal [%[2011-01-02T13:14:15Z\ttest\t{"a":1}\n] +
                  %[2011-01-02T13:14:15Z\ttest\t{"a":2}\n]],
@@ -216,7 +234,7 @@ class AzureStorageOutputTest < Test::Unit::TestCase
   ]
 
   def create_time_sliced_driver(conf = CONFIG_TIME_SLICE)
-    d = Fluent::Test::TimeSlicedOutputTestDriver.new(Fluent::AzureStorageOutput) do
+    d = Fluent::Test::Driver::Output.new(Fluent::Plugin::AzureStorageOutput) do
     end.configure(conf)
     d
   end
