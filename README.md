@@ -2,6 +2,13 @@
 
 [![Build Status](https://travis-ci.org/htgc/fluent-plugin-azurestorage.svg?branch=master)](https://travis-ci.org/htgc/fluent-plugin-azurestorage)
 
+## Requirements
+
+| fluent-plugin-influxdb | fluentd | ruby |
+|------------------------|---------|------|
+| >= 0.1.0 | >= v0.14.0 | >= 2.1 |
+|  < 0.1.0 | >= v0.12.0 | >= 1.9 |
+
 ## Overview
 
 Azure Storate output plugin buffers logs in local file and upload them to Azure Storage periodically.
