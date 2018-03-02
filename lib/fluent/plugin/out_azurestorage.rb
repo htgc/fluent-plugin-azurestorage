@@ -124,6 +124,7 @@ module Fluent::Plugin
           "%{time_slice}" => time_slice,
           "%{file_extension}" => @compressor.ext,
           "%{index}" => i,
+          "%{hostname}" => Socket.gethostname,
           "%{uuid_flush}" => uuid_random
         }
         storage_path = @azure_object_key_format.gsub(%r(%{[^}]+}), values_for_object_key)
