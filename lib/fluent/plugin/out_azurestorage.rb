@@ -20,6 +20,7 @@ module Fluent::Plugin
     config_param :path, :string, :default => ""
     config_param :azure_storage_account, :string, :default => nil
     config_param :azure_storage_access_key, :string, :default => nil, :secret => true
+    config_param :azure_storage_sas_token, :string, :default => nil, :secret => true
     config_param :azure_container, :string, :default => nil
     config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
@@ -89,14 +90,20 @@ module Fluent::Plugin
     def start
       super
 
-      if (!@azure_storage_account.nil? && !@azure_storage_access_key.nil?)
+      if !@azure_storage_account.nil? && (!@azure_storage_access_key.nil? || !@azure_storage_sas_token.nil?)
         Azure.configure do |config|
           config.storage_account_name = @azure_storage_account
           config.storage_access_key   = @azure_storage_access_key
         end
       end
-      @bs = Azure::Blob::BlobService.new
-      @bs.extend UploadService
+      # @bs = Azure::Blob::BlobService.new
+      # @bs.extend UploadService
+
+      @blob_client = Azure::Storage::Blob::BlobService
+                        .create(storage_account_name: @azure_storage_account,
+                                storage_access_key: @azure_storage_access_key,
+                                storage_sas_token: @azure_storage_sas_token)
+      @blob_client.extend UploadService
 
       ensure_container
     end
@@ -141,20 +148,36 @@ module Fluent::Plugin
         @compressor.compress(chunk, tmp)
         tmp.close
 
+        # options = {}
+        # options[:content_type] = @compressor.content_type
+        # options[:container] = @azure_container
+        # options[:blob] = storage_path
+        #
+        # @bs.upload(tmp.path, options)
+
         options = {}
         options[:content_type] = @compressor.content_type
-        options[:container] = @azure_container
-        options[:blob] = storage_path
 
-        @bs.upload(tmp.path, options)
+        @blob_client.create_block_blob(
+            @azure_container, storage_path, tmp.path, options)
       end
     end
 
     private
+    # def ensure_container
+    #   if ! @bs.list_containers.find { |c| c.name == @azure_container }
+    #     if @auto_create_container
+    #       @bs.create_container(@azure_container)
+    #     else
+    #       raise "The specified container does not exist: container = #{@azure_container}"
+    #     end
+    #   end
+    # end
+
     def ensure_container
-      if ! @bs.list_containers.find { |c| c.name == @azure_container }
+      if ! @blob_client.list_containers.find { |c| c.name == @azure_container }
         if @auto_create_container
-          @bs.create_container(@azure_container)
+          @blob_client.create_container(@azure_container)
         else
           raise "The specified container does not exist: container = #{@azure_container}"
         end
@@ -272,7 +295,8 @@ module Fluent::Plugin
 
     def blob_exists?(container, blob)
       begin
-        @bs.get_blob_properties(container, blob)
+        # @bs.get_blob_properties(container, blob)
+        @blob_client.get_blob_properties(container, blob)
         true
       rescue Azure::Core::Http::HTTPError => ex
         raise if ex.status_code != 404
