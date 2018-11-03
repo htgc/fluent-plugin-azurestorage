@@ -1,4 +1,4 @@
-require 'azure'
+require 'azure/storage/blob'
 require 'fluent/plugin/upload_service'
 require 'zlib'
 require 'time'
