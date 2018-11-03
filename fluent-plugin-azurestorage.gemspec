@@ -16,8 +16,8 @@ Gem::Specification.new do |gem|
   gem.executables = `git ls-files -- bin/*`.split("\n").map{ |f| File.basename(f) }
   gem.require_paths = ['lib']
 
-  gem.add_dependency "fluentd", [">= 0.14.0", "< 2"]
-  gem.add_dependency "azure", [">= 0.7.1", "<= 0.7.10"]
+  gem.add_dependency "fluentd", [">= 1.0.0", "<= 1.2.6"]
+  gem.add_dependency "azure-storage-blob", ["1.0.1"]
   gem.add_dependency "uuidtools", ">= 2.1.5"
   gem.add_development_dependency "rake", ">= 0.9.2"
   gem.add_development_dependency "test-unit", ">= 3.0.8"
