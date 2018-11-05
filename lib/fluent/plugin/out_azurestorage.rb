@@ -4,6 +4,7 @@ require 'zlib'
 require 'time'
 require 'tempfile'
 require 'fluent/plugin/output'
+require 'fluent/error'
 
 module Fluent::Plugin
   class AzureStorageOutput < Fluent::Plugin::Output
@@ -88,19 +89,8 @@ module Fluent::Plugin
     end
 
     def start
-      options = {}
-      options[:storage_account_name] = @azure_storage_account
-      unless @azure_storage_access_key.nil?
-        options[:storage_access_key] = @azure_storage_access_key
-      end
-      unless @azure_storage_sas_token.nil?
-        options[:storage_sas_token] = @azure_storage_sas_token
-      end
-      @blob_client = Azure::Storage::Blob::BlobService.create(options)
-      @blob_client.extend UploadService
-
+      setup_blob_client
       ensure_container
-
       super
     end
 
@@ -153,6 +143,20 @@ module Fluent::Plugin
     end
 
     private
+
+    def setup_blob_client
+      options = {}
+      options[:storage_account_name] = @azure_storage_account
+      unless @azure_storage_access_key.nil?
+        options[:storage_access_key] = @azure_storage_access_key
+      end
+      unless @azure_storage_sas_token.nil?
+        options[:storage_sas_token] = @azure_storage_sas_token
+      end
+      @blob_client = Azure::Storage::Blob::BlobService.create(options)
+      @blob_client.extend UploadService
+    end
+
     def ensure_container
       begin
         if !@blob_client.list_containers.find {|c| c.name == @azure_container}
