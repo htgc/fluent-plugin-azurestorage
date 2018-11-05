@@ -88,17 +88,6 @@ module Fluent::Plugin
     end
 
     def start
-      super
-
-      # if !@azure_storage_account.nil? && (!@azure_storage_access_key.nil? || !@azure_storage_sas_token.nil?)
-      #   Azure.configure do |config|
-      #     config.storage_account_name = @azure_storage_account
-      #     config.storage_access_key   = @azure_storage_access_key
-      #   end
-      # end
-      # @bs = Azure::Blob::BlobService.new
-      # @bs.extend UploadService
-
       options = {}
       options[:storage_account_name] = @azure_storage_account
       unless @azure_storage_access_key.nil?
@@ -111,6 +100,8 @@ module Fluent::Plugin
       @blob_client.extend UploadService
 
       ensure_container
+
+      super
     end
 
     def format(tag, time, record)
@@ -153,13 +144,6 @@ module Fluent::Plugin
         @compressor.compress(chunk, tmp)
         tmp.close
 
-        # options = {}
-        # options[:content_type] = @compressor.content_type
-        # options[:container] = @azure_container
-        # options[:blob] = storage_path
-        #
-        # @bs.upload(tmp.path, options)
-
         options = {}
         options[:content_type] = @compressor.content_type
 
@@ -169,17 +153,14 @@ module Fluent::Plugin
     end
 
     private
-    # def ensure_container
-    #   if ! @bs.list_containers.find { |c| c.name == @azure_container }
-    #     if @auto_create_container
-    #       @bs.create_container(@azure_container)
-    #     else
-    #       raise "The specified container does not exist: container = #{@azure_container}"
-    #     end
-    #   end
-    # end
-
     def ensure_container
+      begin
+      rescue Azure::Core::Http::HTTPError => e
+        if e.status_code == 403
+          raise
+        end
+
+      end
       if ! @blob_client.list_containers.find { |c| c.name == @azure_container }
         # SAS token is container-wide so account-wide operations, such as create container, don't work.
         # Hence storage access key authentication is the only option to auto create container.
@@ -302,7 +283,6 @@ module Fluent::Plugin
 
     def blob_exists?(container, blob)
       begin
-        # @bs.get_blob_properties(container, blob)
         @blob_client.get_blob_properties(container, blob)
         true
       rescue Azure::Core::Http::HTTPError => ex
