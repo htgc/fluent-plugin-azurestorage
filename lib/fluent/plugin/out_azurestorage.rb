@@ -89,7 +89,12 @@ module Fluent::Plugin
 
     def start
       setup_blob_client
-      ensure_container
+      if not @azure_storage_access_key.nil?
+        # Since we only require container wide SAS token,
+        # account level operations, which are required by container existence check,
+        # would be denied without storage key.
+        ensure_container
+      end
       super
     end
 
@@ -146,10 +151,10 @@ module Fluent::Plugin
     def setup_blob_client
       options = {}
       options[:storage_account_name] = @azure_storage_account
-      unless @azure_storage_access_key.nil?
+      if not @azure_storage_access_key.nil?
         options[:storage_access_key] = @azure_storage_access_key
       end
-      unless @azure_storage_sas_token.nil?
+      if not @azure_storage_sas_token.nil?
         options[:storage_sas_token] = @azure_storage_sas_token
       end
       @blob_client = Azure::Storage::Blob::BlobService.create(options)
@@ -159,9 +164,7 @@ module Fluent::Plugin
     def ensure_container
       begin
         if !@blob_client.list_containers.find {|c| c.name == @azure_container}
-          # SAS token is container-wide so account-wide operations, such as create container, don't work.
-          # Hence storage access key authentication is the only option to auto create container.
-          if @auto_create_container && !@azure_storage_access_key.nil?
+          if @auto_create_container
             @blob_client.create_container(@azure_container)
           else
             raise "The specified container does not exist: container = #{@azure_container}"
