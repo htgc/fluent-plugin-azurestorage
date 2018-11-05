@@ -10,3 +10,5 @@ Gemfile.lock
 vendor
 .ruby-version
 *.komodoproject
+
+test/test_azurestorage_sdk.rb

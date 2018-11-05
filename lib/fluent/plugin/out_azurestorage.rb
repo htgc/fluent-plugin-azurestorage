@@ -99,10 +99,16 @@ module Fluent::Plugin
       # @bs = Azure::Blob::BlobService.new
       # @bs.extend UploadService
 
-      @blob_client = Azure::Storage::Blob::BlobService
-                        .create(storage_account_name: @azure_storage_account,
-                                storage_access_key: @azure_storage_access_key,
-                                storage_sas_token: @azure_storage_sas_token)
+      options = {}
+      options[:storage_account_name] = @azure_storage_account
+      unless @azure_storage_access_key.nil?
+        options[:storage_access_key] = @azure_storage_access_key
+      end
+      unless @azure_storage_sas_token.nil?
+        options[:storage_sas_token] = @azure_storage_sas_token
+      end
+      print(options)
+      @blob_client = Azure::Storage::Blob::BlobService.create(options)
       @blob_client.extend UploadService
 
       ensure_container

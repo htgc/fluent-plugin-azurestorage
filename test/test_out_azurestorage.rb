@@ -239,4 +239,31 @@ class AzureStorageOutputTest < Test::Unit::TestCase
     d
   end
 
+  CONFIG_SAS = %[
+    azure_storage_account test_storage_account
+    azure_storage_sas_token sr=c&sp=rw&sv=2017-07-29&st=2018-10-24T20%3A42%3A13Z&sig=RYehdIyUfcdc8wGEa9vJrnlby6u4jbm6SwLYcACsF3U%3D&se=2019-08-01T20%3A42%3A13Z
+    azure_container test_container
+    path log
+    utc
+    buffer_type memory
+  ]
+
+  def test_configure_sas_auth
+    d = create_driver(CONFIG_SAS)
+    assert_equal 'test_storage_account', d.instance.azure_storage_account
+    assert_equal 'sr=c&sp=rw&sv=2017-07-29&st=2018-10-24T20%3A42%3A13Z&sig=RYehdIyUfcdc8wGEa9vJrnlby6u4jbm6SwLYcACsF3U%3D&se=2019-08-01T20%3A42%3A13Z', d.instance.azure_storage_sas_token
+    assert_equal 'test_container', d.instance.azure_container
+    assert_equal 'log', d.instance.path
+    assert_equal 'gz', d.instance.instance_variable_get(:@compressor).ext
+    assert_equal 'application/x-gzip', d.instance.instance_variable_get(:@compressor).content_type
+  end
+
+  def test_configure_auth_key_and_sas
+    conf = CONFIG_SAS.clone
+    conf << "azure_storage_access_key dGVzdF9zdG9yYWdlX2FjY2Vzc19rZXk=\n"
+    assert_raise Azure::Storage::Common::InvalidOptionsError do
+      d = create_driver(conf)
+      d.instance.start
+    end
+  end
 end
