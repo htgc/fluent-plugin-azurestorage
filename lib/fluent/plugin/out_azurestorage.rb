@@ -107,7 +107,6 @@ module Fluent::Plugin
       unless @azure_storage_sas_token.nil?
         options[:storage_sas_token] = @azure_storage_sas_token
       end
-      print(options)
       @blob_client = Azure::Storage::Blob::BlobService.create(options)
       @blob_client.extend UploadService
 
