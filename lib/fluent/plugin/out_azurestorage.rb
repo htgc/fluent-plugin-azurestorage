@@ -154,13 +154,6 @@ module Fluent::Plugin
 
     private
     def ensure_container
-      begin
-      rescue Azure::Core::Http::HTTPError => e
-        if e.status_code == 403
-          raise
-        end
-
-      end
       if ! @blob_client.list_containers.find { |c| c.name == @azure_container }
         # SAS token is container-wide so account-wide operations, such as create container, don't work.
         # Hence storage access key authentication is the only option to auto create container.
