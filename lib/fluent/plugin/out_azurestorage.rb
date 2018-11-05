@@ -4,7 +4,6 @@ require 'zlib'
 require 'time'
 require 'tempfile'
 require 'fluent/plugin/output'
-require 'fluent/error'
 
 module Fluent::Plugin
   class AzureStorageOutput < Fluent::Plugin::Output
@@ -170,7 +169,7 @@ module Fluent::Plugin
         end
       rescue Azure::Core::Http::HTTPError => e
         if e.status_code == 403
-          raise Fluent::UnrecoverableError(e.message)
+          raise Fluent::UnrecoverableError, e.message
         else
           raise e
         end
