@@ -89,12 +89,7 @@ module Fluent::Plugin
 
     def start
       setup_blob_client
-      if not @azure_storage_access_key.nil?
-        # Since we only require container wide SAS token,
-        # account level operations, which are required by container existence check,
-        # would be denied without storage key.
-        ensure_container
-      end
+      ensure_container
       super
     end
 
@@ -163,11 +158,23 @@ module Fluent::Plugin
     end
 
     def ensure_container
-      if !@blob_client.list_containers.find {|c| c.name == @azure_container}
-        if @auto_create_container
-          @blob_client.create_container(@azure_container)
+      begin
+        if !@blob_client.list_containers.find {|c| c.name == @azure_container}
+          if @auto_create_container
+            @blob_client.create_container(@azure_container)
+          else
+            raise "The specified container does not exist: container = #{@azure_container}"
+          end
+        end
+      rescue Azure::Core::Http::HTTPError => e
+        if e.status_code == 403
+          # This function requires storage account permissions,
+          # meaning that a SAS token with only container permission would fail.
+          # In that case the plugin would assumes the container exists and proceed
+          # to upload logs.
+          log.warn "Authorization failed, skipped ensuring container #{@azure_container}."
         else
-          raise "The specified container does not exist: container = #{@azure_container}"
+          raise e
         end
       end
     end
