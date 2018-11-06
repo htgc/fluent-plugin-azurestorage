@@ -140,9 +140,10 @@ module Fluent::Plugin
 
         options = {}
         options[:content_type] = @compressor.content_type
+        options[:container] = @azure_container
+        options[:blob] = storage_path
 
-        @blob_client.create_block_blob(
-            @azure_container, storage_path, tmp.path, options)
+        @blob_client.upload(tmp.path, options)
       end
     end
 
