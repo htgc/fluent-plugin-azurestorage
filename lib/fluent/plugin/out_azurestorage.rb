@@ -163,13 +163,13 @@ module Fluent::Plugin
     end
 
     def ensure_container
-        if !@blob_client.list_containers.find {|c| c.name == @azure_container}
-          if @auto_create_container
-            @blob_client.create_container(@azure_container)
-          else
-            raise "The specified container does not exist: container = #{@azure_container}"
-          end
+      if !@blob_client.list_containers.find {|c| c.name == @azure_container}
+        if @auto_create_container
+          @blob_client.create_container(@azure_container)
+        else
+          raise "The specified container does not exist: container = #{@azure_container}"
         end
+      end
     end
 
     def uuid_random
