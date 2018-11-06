@@ -163,7 +163,6 @@ module Fluent::Plugin
     end
 
     def ensure_container
-      begin
         if !@blob_client.list_containers.find {|c| c.name == @azure_container}
           if @auto_create_container
             @blob_client.create_container(@azure_container)
@@ -171,13 +170,6 @@ module Fluent::Plugin
             raise "The specified container does not exist: container = #{@azure_container}"
           end
         end
-      rescue Azure::Core::Http::HTTPError => e
-        if e.status_code == 403
-          raise Fluent::UnrecoverableError, e.message
-        else
-          raise e
-        end
-      end
     end
 
     def uuid_random
