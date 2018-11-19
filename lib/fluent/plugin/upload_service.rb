@@ -106,6 +106,9 @@ module UploadService
     end
   end
 
+  public :upload
+  private :complete_upload, :upload_blocks, :compute_blocks, :upload_in_threads, :block_size
+
   # @api private
   class BlockList
 

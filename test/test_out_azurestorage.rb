@@ -239,30 +239,36 @@ class AzureStorageOutputTest < Test::Unit::TestCase
     d
   end
 
-  CONFIG_SAS = %[
+  CONFIG_MSI = %[
     azure_storage_account test_storage_account
-    azure_storage_sas_token sr=c&sp=rw&sv=2017-07-29&st=2018-10-24T20%3A42%3A13Z&sig=RYehdIyUfcdc8wGEa9vJrnlby6u4jbm6SwLYcACsF3U%3D&se=2019-08-01T20%3A42%3A13Z
+    azure_instance_msi /subscriptions/sub_id/resourcegroups/rsg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/msi
     azure_container test_container
     path log
     utc
     buffer_type memory
   ]
 
-  def test_configure_sas_auth
-    d = create_driver(CONFIG_SAS)
+  def test_configure_msi_auth
+    d = create_driver(CONFIG_MSI)
     assert_equal 'test_storage_account', d.instance.azure_storage_account
-    assert_equal 'sr=c&sp=rw&sv=2017-07-29&st=2018-10-24T20%3A42%3A13Z&sig=RYehdIyUfcdc8wGEa9vJrnlby6u4jbm6SwLYcACsF3U%3D&se=2019-08-01T20%3A42%3A13Z', d.instance.azure_storage_sas_token
+    assert_equal '/subscriptions/sub_id/resourcegroups/rsg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/msi', d.instance.azure_instance_msi
     assert_equal 'test_container', d.instance.azure_container
     assert_equal 'log', d.instance.path
     assert_equal 'gz', d.instance.instance_variable_get(:@compressor).ext
     assert_equal 'application/x-gzip', d.instance.instance_variable_get(:@compressor).content_type
   end
 
-  def test_configure_auth_key_and_sas
-    conf = CONFIG_SAS.clone
-    conf << "azure_storage_access_key dGVzdF9zdG9yYWdlX2FjY2Vzc19rZXk=\n"
-    assert_raise Azure::Storage::Common::InvalidOptionsError do
-      d = create_driver(conf)
+  CONFIG_NO_AUTH = %[
+    azure_storage_account test_storage_account
+    azure_container test_container
+    path log
+    utc
+    buffer_type memory
+  ]
+
+  def test_configure_missing_auth_info
+    assert_raise Fluent::ConfigError do
+      d = create_driver(CONFIG_NO_AUTH)
       d.instance.start
     end
   end

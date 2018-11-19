@@ -1,4 +1,5 @@
 require 'azure/storage/blob'
+require 'azure/core/http/http_error'
 require 'fluent/plugin/upload_service'
 require 'zlib'
 require 'time'
@@ -20,7 +21,7 @@ module Fluent::Plugin
     config_param :path, :string, :default => ""
     config_param :azure_storage_account, :string, :default => nil
     config_param :azure_storage_access_key, :string, :default => nil, :secret => true
-    config_param :azure_storage_sas_token, :string, :default => nil, :secret => true
+    config_param :azure_instance_msi, :string, :default => nil
     config_param :azure_container, :string, :default => nil
     config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
@@ -67,7 +68,11 @@ module Fluent::Plugin
       end
 
       if @azure_container.nil?
-        raise ConfigError, 'azure_container is needed'
+        raise Fluent::ConfigError, "azure_container is needed"
+      end
+
+      if @azure_storage_access_key.nil? and @azure_instance_msi.nil?
+        raise Fluent::ConfigError, "Either azure_storage_access_key or azure_instance_msi is needed."
       end
 
       @storage_type = case @azure_storage_type
@@ -137,8 +142,18 @@ module Fluent::Plugin
         options[:content_type] = @compressor.content_type
         options[:container] = @azure_container
         options[:blob] = storage_path
-
-        @blob_client.upload(tmp.path, options)
+        begin
+          retries ||= 0
+          @blob_client.upload(tmp.path, options)
+        rescue Azure::Core::Http::HTTPError => e
+          if e.status_code == 403 && (retries += 1) <= 1
+            log.warn "Blob authentication failed, retry request with new SAS token."
+            setup_blob_client
+            retry
+          else
+            raise e
+          end
+        end
       end
     end
 
@@ -147,14 +162,37 @@ module Fluent::Plugin
     def setup_blob_client
       options = {}
       options[:storage_account_name] = @azure_storage_account
-      if not @azure_storage_access_key.nil?
+      if @azure_storage_access_key.nil?
+        options[:storage_sas_token] = generate_sas_token
+      else
         options[:storage_access_key] = @azure_storage_access_key
-      end
-      if not @azure_storage_sas_token.nil?
-        options[:storage_sas_token] = @azure_storage_sas_token
       end
       @blob_client = Azure::Storage::Blob::BlobService.create(options)
       @blob_client.extend UploadService
+    end
+
+    # Generate a SAS token for specified container.
+    # When a upload request failed authentication, it's likely the existing SAS was expired
+    # or storage key was manually refreshed. In this case try generating a new SAS
+    # and retry the request.
+    def generate_sas_token
+      token_start = Time.now
+      token_end = token_start + (60 * 60 * 24 * 30) # one month
+      time_format = "%Y-%m-%dT%H:%M:%SZ"
+
+      msi_id = @azure_instance_msi
+      stdout, stderr, status = Open3.capture3("az", "login", "--identity", "-u", msi_id)
+      raise "Failed to login Azure as #{msi_id}.\n #{stderr}" unless status.success?
+
+      stdout, stderr, status = Open3.capture3("az", "storage", "container", "generate-sas",
+                                              "--start", token_start.strftime(time_format),
+                                              "--expiry", token_end.strftime(time_format),
+                                              "--permissions", "rw",
+                                              "--account-name", @options[:storage_account_name],
+                                              "--name", @container_name,
+                                              "--output", "tsv")
+      raise "Failed to generate SAS token.\n #{stderr}" unless status.success?
+      return stdout
     end
 
     def ensure_container
@@ -228,7 +266,7 @@ module Fluent::Plugin
         begin
           Open3.capture3("#{command} -V")
         rescue Errno::ENOENT
-          raise ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
+          raise Fluent::ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
         end
       end
     end
