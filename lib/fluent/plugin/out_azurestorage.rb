@@ -163,7 +163,11 @@ module Fluent::Plugin
       options = {}
       options[:storage_account_name] = @azure_storage_account
       if @azure_storage_access_key.nil?
-        options[:storage_sas_token] = generate_sas_token
+        access_token = acquire_access_token
+        token_credential = Azure::Storage::Common::Core::TokenCredential.new access_token
+        token_signer = Azure::Storage::Common::Core::Auth::TokenSigner.new token_credential
+        options[:signer] = token_signer
+        periodically_refresh_access_token
       else
         options[:storage_access_key] = @azure_storage_access_key
       end
@@ -171,28 +175,32 @@ module Fluent::Plugin
       @blob_client.extend UploadService
     end
 
-    # Generate a SAS token for specified container.
-    # When a upload request failed authentication, it's likely the existing SAS was expired
-    # or storage key was manually refreshed. In this case try generating a new SAS
-    # and retry the request.
-    def generate_sas_token
-      token_start = Time.now
-      token_end = token_start + (60 * 60 * 24 * 30) # one month
-      time_format = "%Y-%m-%dT%H:%M:%SZ"
-
+    def acquire_access_token
       msi_id = @azure_instance_msi
       stdout, stderr, status = Open3.capture3("az", "login", "--identity", "-u", msi_id)
       raise "Failed to login Azure as #{msi_id}.\n #{stderr}" unless status.success?
 
-      stdout, stderr, status = Open3.capture3("az", "storage", "container", "generate-sas",
-                                              "--start", token_start.strftime(time_format),
-                                              "--expiry", token_end.strftime(time_format),
-                                              "--permissions", "rw",
-                                              "--account-name", @options[:storage_account_name],
-                                              "--name", @container_name,
-                                              "--output", "tsv")
-      raise "Failed to generate SAS token.\n #{stderr}" unless status.success?
+      stdout, stderr, status = Open3.capture3("az", "account", "get-access-token", "|",
+                                              "jq", "-r", "'.accessToken'")
+      raise "Failed to acquire access token.\n #{stderr}" unless status.success?
       return stdout
+    end
+
+    def periodically_refresh_access_token
+      # Refresh internal is one day
+      refresh_interval = 24 * 60 * 60
+      # The user-defined thread that renews the access token
+      cancelled = false
+      renew_token = Thread.new do
+        Thread.stop
+          while !cancelled
+          sleep(refresh_interval)
+          # Update the access token to the credential
+          token_credential.renew_token acquire_access_token
+          end
+        end
+      sleep 0.1 while renew_token.status != 'sleep'
+      renew_token.run
     end
 
     def ensure_container
