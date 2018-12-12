@@ -185,6 +185,7 @@ module Fluent::Plugin
         "-H Metadata:true | jq -r '.access_token'")
       raise "Failed to acquire access token(#{status}): #{stderr}" unless status.success?
 
+      log.info "Access Token: #{stdout}"
       return stdout
     end
 
