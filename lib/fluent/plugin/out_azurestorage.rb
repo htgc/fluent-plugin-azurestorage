@@ -185,15 +185,13 @@ module Fluent::Plugin
 
       req = Net::HTTP::Get.new(uri)
       req['Metadata'] = "true"
-      log.info "req: #{req}"
 
       res = Net::HTTP.start(uri.hostname, uri.port) {|http|
         http.request(req)
       }
       if res.is_a?(Net::HTTPSuccess)
         data = JSON.parse(res.body)
-        log.info "data #{data}"
-        token = data[".access_token"]
+        token = data["access_token"]
       else
         raise "Failed to acquire access token. #{res.code}: #{res.body}"
       end
