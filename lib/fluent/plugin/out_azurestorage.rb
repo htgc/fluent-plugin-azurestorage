@@ -29,7 +29,7 @@ module Fluent::Plugin
     config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
     config_param :store_as, :string, :default => "gzip"
-    config_param :auto_create_container, :bool, :default => true
+    config_param :auto_create_container, :bool, :default => false
     config_param :format, :string, :default => "out_file"
     config_param :command_parameter, :string, :default => nil
 
