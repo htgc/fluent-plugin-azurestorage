@@ -24,6 +24,7 @@ module Fluent::Plugin
     config_param :azure_storage_account, :string, :default => nil
     config_param :azure_storage_access_key, :string, :default => nil, :secret => true
     config_param :azure_instance_msi, :string, :default => nil
+    config_param :azure_oauth_refresh_interval, :integer, :default => 24 * 60 * 60 # default refresh interval is one day.
     config_param :azure_container, :string, :default => nil
     config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
@@ -140,18 +141,7 @@ module Fluent::Plugin
         options[:content_type] = @compressor.content_type
         options[:container] = @azure_container
         options[:blob] = storage_path
-        begin
-          retries ||= 0
-          @blob_client.upload(tmp.path, options)
-        rescue Azure::Core::Http::HTTPError => e
-          if e.status_code == 403 && (retries += 1) <= 1
-            log.warn "Blob authentication failed, retry request with new SAS token."
-            setup_blob_client
-            retry
-          else
-            raise e
-          end
-        end
+        @blob_client.upload(tmp.path, options)
       end
     end
 
@@ -193,22 +183,19 @@ module Fluent::Plugin
         data = JSON.parse(res.body)
         token = data["access_token"]
       else
-        raise "Failed to acquire access token. #{res.code}: #{res.body}"
+        raise Fluent::UnrecoverableError, "Failed to acquire access token. #{res.code}: #{res.body}"
       end
 
-      log.info "Access Token: #{token}"
-      return token
+      token
     end
 
     def periodically_refresh_access_token
-      # Refresh internal is one day
-      refresh_interval = 24 * 60 * 60
       # The user-defined thread that renews the access token
       cancelled = false
       renew_token = Thread.new do
         Thread.stop
           while !cancelled
-          sleep(refresh_interval)
+          sleep(@azure_oauth_refresh_interval)
           # Update the access token to the credential
           token_credential.renew_token acquire_access_token
           end
@@ -222,7 +209,7 @@ module Fluent::Plugin
         if @auto_create_container
           @blob_client.create_container(@azure_container)
         else
-          raise "The specified container does not exist: container = #{@azure_container}"
+          raise Fluent::ConfigError, "The specified container does not exist: container = #{@azure_container}"
         end
       end
     end
