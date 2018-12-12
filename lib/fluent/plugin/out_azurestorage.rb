@@ -182,13 +182,14 @@ module Fluent::Plugin
         params[:object_id] = @azure_instance_msi
       end
       uri.query = URI.encode_www_form(params)
+      log.info "uri: #{uri}"
 
       res = Net::HTTP.get_response(uri)
       if res.is_a?(Net::HTTPSuccess)
         data = JSON.parse(response.body)
         token = data[".access_token"]
       else
-        raise "Failed to acquire access token: #{res}"
+        raise "Failed to acquire access token. #{res.code}: #{res.body}"
       end
 
       log.info "Access Token: #{token}"
