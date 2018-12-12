@@ -192,6 +192,7 @@ module Fluent::Plugin
       }
       if res.is_a?(Net::HTTPSuccess)
         data = JSON.parse(res.body)
+        log.info "data #{data}"
         token = data[".access_token"]
       else
         raise "Failed to acquire access token. #{res.code}: #{res.body}"
