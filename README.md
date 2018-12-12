@@ -29,9 +29,11 @@ $ gem install fluent-plugin-azurestorage
 <match pattern>
   type azurestorage
 
-  azure_storage_account    <your azure storage account>
-  azure_storage_access_key <your azure storage access key>
-  azure_container          <your azure storage container>
+  azure_storage_account           <your azure storage account>
+  azure_storage_access_key        <your azure storage access key>
+  azure_instance_msi              <your azure instance MSI id>
+  azure_oauth_refresh_interval    <your azure MSI token refresh interval in seconds>
+  azure_container                 <your azure storage container>
   azure_storage_type       blob
   store_as                 gzip
   auto_create_container    true
@@ -69,9 +71,11 @@ Note that this configuration doesn't work with fluentd v0.12.
 <match pattern>
   type azurestorage
 
-  azure_storage_account    <your azure storage account>
-  azure_storage_access_key <your azure storage access key>
-  azure_container          <your azure storage container>
+  azure_storage_account           <your azure storage account>
+  azure_storage_access_key        <your azure storage access key>
+  azure_instance_msi              <your azure instance MSI id>
+  azure_oauth_refresh_interval    <your azure MSI token refresh interval in seconds>
+  azure_container                 <your azure storage container>
   azure_storage_type       blob
   store_as                 gzip 
   auto_create_container    true
@@ -92,8 +96,15 @@ This parameter is required when environment variable 'AZURE_STORAGE_ACCOUNT' is 
 
 ### azure_storage_access_key
 
-Your Azure Storage Access Key(Primary or Secondary). This also can be got from Azure Management potal.
-This parameter is required when environment variable 'AZURE_STORAGE_ACCESS_KEY' is not set.
+Your Azure Storage Access Key(Primary or Secondary). This also can be got from Azure Management potal. Storage access key authentication is used when this parameter is provided or environment variable 'AZURE_STORAGE_ACCESS_KEY' is set.
+
+### azure_instance_msi
+
+Your Azure Managed Service Identity ID. When storage key authentication is not used, the plugin uses OAuth2 to authenticate as given MSI. This authentication method only works on Azure VM. If the VM has only one MSI assigned, this parameter becomes optional and the only MSI will be used. Otherwise this parameter is required.
+
+### azure_oauth_refresh_interval
+
+OAuth2 access token refreshment interval in second. Only applies when MSI authentication is used.
 
 ### azure_container (Required)
 
