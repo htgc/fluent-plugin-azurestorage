@@ -239,9 +239,10 @@ class AzureStorageOutputTest < Test::Unit::TestCase
     d
   end
 
-  CONFIG_MSI = %[
+  CONFIG_OAUTH = %[
     azure_storage_account test_storage_account
     azure_instance_msi /subscriptions/sub_id/resourcegroups/rsg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/msi
+    azure_oauth_refresh_interval 60
     azure_container test_container
     path log
     utc
@@ -249,27 +250,13 @@ class AzureStorageOutputTest < Test::Unit::TestCase
   ]
 
   def test_configure_msi_auth
-    d = create_driver(CONFIG_MSI)
+    d = create_driver(CONFIG_OAUTH)
     assert_equal 'test_storage_account', d.instance.azure_storage_account
     assert_equal '/subscriptions/sub_id/resourcegroups/rsg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/msi', d.instance.azure_instance_msi
+    assert_equal 60, d.instance.azure_oauth_refresh_interval
     assert_equal 'test_container', d.instance.azure_container
     assert_equal 'log', d.instance.path
     assert_equal 'gz', d.instance.instance_variable_get(:@compressor).ext
     assert_equal 'application/x-gzip', d.instance.instance_variable_get(:@compressor).content_type
-  end
-
-  CONFIG_NO_AUTH = %[
-    azure_storage_account test_storage_account
-    azure_container test_container
-    path log
-    utc
-    buffer_type memory
-  ]
-
-  def test_configure_missing_auth_info
-    assert_raise Fluent::ConfigError do
-      d = create_driver(CONFIG_NO_AUTH)
-      d.instance.start
-    end
   end
 end
