@@ -159,7 +159,7 @@ module Fluent::Plugin
       options = {}
       options[:storage_account_name] = @azure_storage_account
       if @azure_storage_access_key.nil?
-        access_token = acquire_access_token_curl
+        access_token = acquire_access_token
         token_credential = Azure::Storage::Common::Core::TokenCredential.new access_token
         token_signer = Azure::Storage::Common::Core::Auth::TokenSigner.new token_credential
         options[:signer] = token_signer
@@ -171,23 +171,17 @@ module Fluent::Plugin
       @blob_client.extend UploadService
     end
 
-    def acquire_access_token
-      msi_id = @azure_instance_msi
-      stdout, stderr, status = Open3.capture3("az", "login", "--identity", "-u", msi_id)
-      raise "Failed to login Azure as #{msi_id}.\n #{stderr}" unless status.success?
-
-      stdout, stderr, status = Open3.capture3("az", "account", "get-access-token", "|",
-                                              "jq", "-r", "'.access_token'")
-      raise "Failed to acquire access token.\n #{stderr}" unless status.success?
-      return stdout
-    end
-
     # Referenced from azure doc.
     # https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/tutorial-linux-vm-access-storage#get-an-access-token-and-use-it-to-call-azure-storage
-    def acquire_access_token_curl
+    def acquire_access_token
+      storage_identity_endpoint = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F"
+      unless @azure_instance_msi.nil?
+        storage_identity_endpoint += "&object_id=#{@azure_instance_msi}"
+      end
+
       stdout, stderr, status = Open3.capture3(
         "curl -s " + 
-        "'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F'" +
+        "'#{storage_identity_endpoint}'" +
         "-H Metadata:true | jq -r '.access_token'")
       raise "Failed to acquire access token(#{status}): #{stderr}" unless status.success?
 
@@ -212,23 +206,11 @@ module Fluent::Plugin
     end
 
     def ensure_container
-      begin
-        if !@blob_client.list_containers.find {|c| c.name == @azure_container}
-          if @auto_create_container
-            @blob_client.create_container(@azure_container)
-          else
-            raise "The specified container does not exist: container = #{@azure_container}"
-          end
-        end
-      rescue Azure::Core::Http::HTTPError => e
-        if e.status_code == 403
-          # This function requires storage account permissions,
-          # meaning that a SAS token with only container permission would fail.
-          # In that case the plugin would assumes the container exists and proceed
-          # to upload logs.
-          log.warn "Authorization failed, skipped ensuring container #{@azure_container}."
+      if !@blob_client.list_containers.find {|c| c.name == @azure_container}
+        if @auto_create_container
+          @blob_client.create_container(@azure_container)
         else
-          raise e
+          raise "The specified container does not exist: container = #{@azure_container}"
         end
       end
     end
