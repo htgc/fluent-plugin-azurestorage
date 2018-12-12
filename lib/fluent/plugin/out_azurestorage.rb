@@ -24,7 +24,7 @@ module Fluent::Plugin
     config_param :azure_storage_account, :string, :default => nil
     config_param :azure_storage_access_key, :string, :default => nil, :secret => true
     config_param :azure_instance_msi, :string, :default => nil
-    config_param :azure_oauth_refresh_interval, :integer, :default => 24 * 60 * 60 # default refresh interval is one day.
+    config_param :azure_oauth_refresh_interval, :integer, :default => 60 * 60 # one hour
     config_param :azure_container, :string, :default => nil
     config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
