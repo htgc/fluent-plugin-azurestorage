@@ -4,6 +4,8 @@ require 'fluent/plugin/upload_service'
 require 'zlib'
 require 'time'
 require 'tempfile'
+require 'net/http'
+require 'json'
 require 'fluent/plugin/output'
 
 module Fluent::Plugin
@@ -174,19 +176,23 @@ module Fluent::Plugin
     # Referenced from azure doc.
     # https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/tutorial-linux-vm-access-storage#get-an-access-token-and-use-it-to-call-azure-storage
     def acquire_access_token
-      storage_identity_endpoint = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F"
+      uri = URI('http://169.254.169.254/metadata/identity/oauth2/token')
+      params = { :"api-version" => "2018-02-01", :resource => "https://storage.azure.com/" }
       unless @azure_instance_msi.nil?
-        storage_identity_endpoint += "&object_id=#{@azure_instance_msi}"
+        params[:object_id] = @azure_instance_msi
+      end
+      uri.query = URI.encode_www_form(params)
+
+      res = Net::HTTP.get_response(uri)
+      if res.is_a?(Net::HTTPSuccess)
+        data = JSON.parse(response.body)
+        token = data[".access_token"]
+      else
+        raise "Failed to acquire access token: #{res}"
       end
 
-      stdout, stderr, status = Open3.capture3(
-        "curl -s " + 
-        "'#{storage_identity_endpoint}'" +
-        "-H Metadata:true | jq -r '.access_token'")
-      raise "Failed to acquire access token(#{status}): #{stderr}" unless status.success?
-
-      log.info "Access Token: #{stdout}"
-      return stdout
+      log.info "Access Token: #{token}"
+      return token
     end
 
     def periodically_refresh_access_token
