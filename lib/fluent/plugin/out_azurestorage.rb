@@ -182,9 +182,14 @@ module Fluent::Plugin
         params[:object_id] = @azure_instance_msi
       end
       uri.query = URI.encode_www_form(params)
-      log.info "uri: #{uri}"
 
-      res = Net::HTTP.get_response(uri)
+      req = Net::HTTP::Get.new(uri)
+      req['Metadata'] = "true"
+      log.info "req: #{req}"
+
+      res = Net::HTTP.start(uri.hostname, uri.port) {|http|
+        http.request(req)
+      }
       if res.is_a?(Net::HTTPSuccess)
         data = JSON.parse(response.body)
         token = data[".access_token"]
