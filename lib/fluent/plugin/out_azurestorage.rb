@@ -71,10 +71,6 @@ module Fluent::Plugin
         raise Fluent::ConfigError, "azure_container is needed"
       end
 
-      if @azure_storage_access_key.nil? and @azure_instance_msi.nil?
-        raise Fluent::ConfigError, "Either azure_storage_access_key or azure_instance_msi is needed."
-      end
-
       @storage_type = case @azure_storage_type
                         when 'tables'
                           raise NotImplementedError
