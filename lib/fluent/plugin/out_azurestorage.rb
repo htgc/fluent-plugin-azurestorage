@@ -163,7 +163,7 @@ module Fluent::Plugin
       options = {}
       options[:storage_account_name] = @azure_storage_account
       if @azure_storage_access_key.nil?
-        access_token = acquire_access_token
+        access_token = acquire_access_token_curl
         token_credential = Azure::Storage::Common::Core::TokenCredential.new access_token
         token_signer = Azure::Storage::Common::Core::Auth::TokenSigner.new token_credential
         options[:signer] = token_signer
@@ -183,6 +183,17 @@ module Fluent::Plugin
       stdout, stderr, status = Open3.capture3("az", "account", "get-access-token", "|",
                                               "jq", "-r", "'.accessToken'")
       raise "Failed to acquire access token.\n #{stderr}" unless status.success?
+      return stdout
+    end
+
+    def acquire_access_token_curl
+      msi_id = @azure_instance_msi
+      stdout, stderr, status = Open3.capture3(
+        "curl", "-s", 
+        "'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F'", 
+        "-H", "Metadata:true", "|", "jq", "-r", "'.accessToken'")
+      raise "Failed to acquire access token.\n #{stderr}" unless status.success?
+
       return stdout
     end
 
