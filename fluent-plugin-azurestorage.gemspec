@@ -17,7 +17,8 @@ Gem::Specification.new do |gem|
   gem.require_paths = ['lib']
 
   gem.add_dependency "fluentd", "1.2.6"
-  gem.add_dependency "azure-storage-blob", "1.0.1"
+  # gem.add_dependency "azure-storage-blob", "1.0.1"
+  gem.add_dependency "azure-storage-blob", git: 'https://github.com/Azure/azure-storage-ruby/tree/dev/blob', branch: 'dev'
   gem.add_dependency "uuidtools", "2.1.5"
   gem.add_development_dependency "rake", "12.3.1"
   gem.add_development_dependency "test-unit", "3.2.8"

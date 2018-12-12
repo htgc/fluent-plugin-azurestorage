@@ -186,8 +186,9 @@ module Fluent::Plugin
       return stdout
     end
 
+    # Referenced from azure doc.
+    # https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/tutorial-linux-vm-access-storage#get-an-access-token-and-use-it-to-call-azure-storage
     def acquire_access_token_curl
-      msi_id = @azure_instance_msi
       stdout, stderr, status = Open3.capture3(
         "curl", "-s", 
         "'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F'", 
