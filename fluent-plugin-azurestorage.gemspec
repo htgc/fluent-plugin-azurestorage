@@ -5,7 +5,7 @@ Gem::Specification.new do |gem|
   gem.name        = "fluent-plugin-azurestorage"
   gem.description = "Azure Storage output plugin for Fluentd event collector"
   gem.license     = "Apache-2.0"
-  gem.homepage    = "https://github.com/gintau/fluent-plugin-azurestorage"
+  gem.homepage    = "https://github.com/htgc/fluent-plugin-azurestorage"
   gem.summary     = gem.description
   gem.version     = File.read("VERSION").strip
   gem.authors     = ["Hidemasa Togashi"]
