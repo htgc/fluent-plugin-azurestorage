@@ -11,7 +11,6 @@ include Fluent::Test::Helpers
 
 class AzureStorageOutputTest < Test::Unit::TestCase
   def setup
-    require 'azure'
     Fluent::Test.setup
   end
 
