@@ -77,7 +77,7 @@ module UploadService
             options[:content_md5] = Base64.strict_encode64(Digest::MD5.digest(content))
             options[:timeout] = 30
 
-            content_md5 = self.create_blob_block(block[:container], block[:blob], block[:block_id], content, options)
+            content_md5 = self.put_blob_block(block[:container], block[:blob], block[:block_id], content, options)
 
             if content_md5 != options[:content_md5]
               raise "The block is corrupt: block = #{block[:block_id]}"
@@ -105,6 +105,9 @@ module UploadService
       block_size
     end
   end
+
+  public :upload
+  private :complete_upload, :upload_blocks, :compute_blocks, :upload_in_threads, :block_size
 
   # @api private
   class BlockList
