@@ -155,7 +155,7 @@ module Fluent::Plugin
         token_credential = Azure::Storage::Common::Core::TokenCredential.new access_token
         token_signer = Azure::Storage::Common::Core::Auth::TokenSigner.new token_credential
         options[:signer] = token_signer
-        periodically_refresh_access_token
+        periodically_refresh_access_token(token_credential)
       else
         options[:storage_access_key] = @azure_storage_access_key
       end
@@ -189,18 +189,16 @@ module Fluent::Plugin
       token
     end
 
-    def periodically_refresh_access_token
+    def periodically_refresh_access_token(token_credential)
       # The user-defined thread that renews the access token
-      cancelled = false
       renew_token = Thread.new do
-        Thread.stop
-          while !cancelled
+        loop do
           sleep(@azure_oauth_refresh_interval)
-          # Update the access token to the credential
-          token_credential.renew_token acquire_access_token
-          end
+          log.info "Refreshing access token..."
+          token_credential.renew_token(acquire_access_token)
+          log.info "Refreshed access token."
         end
-      sleep 0.1 while renew_token.status != 'sleep'
+      end
       renew_token.run
     end
 

@@ -17,6 +17,7 @@ Gem::Specification.new do |gem|
   gem.require_paths = ['lib']
 
   gem.add_dependency "fluentd", "1.2.6"
+  gem.add_dependency "azure-storage-common", "1.1.0"
   gem.add_dependency "azure-storage-blob", "1.1.0"
   gem.add_dependency "uuidtools", "2.1.5"
   gem.add_development_dependency "rake", "12.3.1"
