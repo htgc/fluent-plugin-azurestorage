@@ -1,8 +1,11 @@
-require 'azure'
+require 'azure/storage/blob'
+require 'azure/core/http/http_error'
 require 'fluent/plugin/upload_service'
 require 'zlib'
 require 'time'
 require 'tempfile'
+require 'net/http'
+require 'json'
 require 'fluent/plugin/output'
 
 module Fluent::Plugin
@@ -20,11 +23,13 @@ module Fluent::Plugin
     config_param :path, :string, :default => ""
     config_param :azure_storage_account, :string, :default => nil
     config_param :azure_storage_access_key, :string, :default => nil, :secret => true
+    config_param :azure_instance_msi, :string, :default => nil
+    config_param :azure_oauth_refresh_interval, :integer, :default => 60 * 60 # one hour
     config_param :azure_container, :string, :default => nil
     config_param :azure_storage_type, :string, :default => "blob"
     config_param :azure_object_key_format, :string, :default => "%{path}%{time_slice}_%{index}.%{file_extension}"
     config_param :store_as, :string, :default => "gzip"
-    config_param :auto_create_container, :bool, :default => true
+    config_param :auto_create_container, :bool, :default => false
     config_param :format, :string, :default => "out_file"
     config_param :command_parameter, :string, :default => nil
 
@@ -66,7 +71,7 @@ module Fluent::Plugin
       end
 
       if @azure_container.nil?
-        raise ConfigError, 'azure_container is needed'
+        raise Fluent::ConfigError, "azure_container is needed"
       end
 
       @storage_type = case @azure_storage_type
@@ -87,18 +92,9 @@ module Fluent::Plugin
     end
 
     def start
-      super
-
-      if (!@azure_storage_account.nil? && !@azure_storage_access_key.nil?)
-        Azure.configure do |config|
-          config.storage_account_name = @azure_storage_account
-          config.storage_access_key   = @azure_storage_access_key
-        end
-      end
-      @bs = Azure::Blob::BlobService.new
-      @bs.extend UploadService
-
+      setup_blob_client
       ensure_container
+      super
     end
 
     def format(tag, time, record)
@@ -145,18 +141,73 @@ module Fluent::Plugin
         options[:content_type] = @compressor.content_type
         options[:container] = @azure_container
         options[:blob] = storage_path
-
-        @bs.upload(tmp.path, options)
+        @blob_client.upload(tmp.path, options)
       end
     end
 
     private
+
+    def setup_blob_client
+      options = {}
+      options[:storage_account_name] = @azure_storage_account
+      if @azure_storage_access_key.nil?
+        access_token = acquire_access_token
+        token_credential = Azure::Storage::Common::Core::TokenCredential.new access_token
+        token_signer = Azure::Storage::Common::Core::Auth::TokenSigner.new token_credential
+        options[:signer] = token_signer
+        periodically_refresh_access_token(token_credential)
+      else
+        options[:storage_access_key] = @azure_storage_access_key
+      end
+      @blob_client = Azure::Storage::Blob::BlobService.create(options)
+      @blob_client.extend UploadService
+    end
+
+    # Referenced from azure doc.
+    # https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/tutorial-linux-vm-access-storage#get-an-access-token-and-use-it-to-call-azure-storage
+    def acquire_access_token
+      uri = URI('http://169.254.169.254/metadata/identity/oauth2/token')
+      params = { :"api-version" => "2018-02-01", :resource => "https://storage.azure.com/" }
+      unless @azure_instance_msi.nil?
+        params[:object_id] = @azure_instance_msi
+      end
+      uri.query = URI.encode_www_form(params)
+
+      req = Net::HTTP::Get.new(uri)
+      req['Metadata'] = "true"
+
+      res = Net::HTTP.start(uri.hostname, uri.port) {|http|
+        http.request(req)
+      }
+      if res.is_a?(Net::HTTPSuccess)
+        data = JSON.parse(res.body)
+        token = data["access_token"]
+      else
+        raise Fluent::UnrecoverableError, "Failed to acquire access token. #{res.code}: #{res.body}"
+      end
+
+      token
+    end
+
+    def periodically_refresh_access_token(token_credential)
+      # The user-defined thread that renews the access token
+      renew_token = Thread.new do
+        loop do
+          sleep(@azure_oauth_refresh_interval)
+          log.info "Refreshing access token..."
+          token_credential.renew_token(acquire_access_token)
+          log.info "Refreshed access token."
+        end
+      end
+      renew_token.run
+    end
+
     def ensure_container
-      if ! @bs.list_containers.find { |c| c.name == @azure_container }
+      if !@blob_client.list_containers.find {|c| c.name == @azure_container}
         if @auto_create_container
-          @bs.create_container(@azure_container)
+          @blob_client.create_container(@azure_container)
         else
-          raise "The specified container does not exist: container = #{@azure_container}"
+          raise Fluent::ConfigError, "The specified container does not exist: container = #{@azure_container}"
         end
       end
     end
@@ -210,7 +261,7 @@ module Fluent::Plugin
         begin
           Open3.capture3("#{command} -V")
         rescue Errno::ENOENT
-          raise ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
+          raise Fluent::ConfigError, "'#{command}' utility must be in PATH for #{algo} compression"
         end
       end
     end
@@ -272,7 +323,7 @@ module Fluent::Plugin
 
     def blob_exists?(container, blob)
       begin
-        @bs.get_blob_properties(container, blob)
+        @blob_client.get_blob_properties(container, blob)
         true
       rescue Azure::Core::Http::HTTPError => ex
         raise if ex.status_code != 404
